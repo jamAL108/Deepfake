@@ -1,6 +1,6 @@
 import random
-
-from flask import Flask, request, jsonify
+import requests
+from flask import Flask, request, jsonify , send_file , Response , after_this_request
 from flask_cors import CORS
 import os
 import cv2
@@ -9,7 +9,15 @@ from keras.applications.vgg16 import VGG16, preprocess_input
 from keras_preprocessing.image import img_to_array
 import numpy as np
 from tensorflow.keras.models import load_model
-
+from pytube import YouTube
+from io import BytesIO
+from tempfile import NamedTemporaryFile
+from getrandom import get_random
+import time
+import io
+import instaloader
+import re 
+import gdown
 app = Flask(__name__)
 cors = CORS(app, resources={r"/*": {"origins": "*"}})
 
@@ -101,6 +109,94 @@ def hello_world():
 #         normalized_image_data = (img_array * 255).astype(np.uint8)
 #         data_frame.append(normalized_image_data)
 #     return data_frame
+
+
+
+def get_youtube_video_info(video_url):
+    # Validate URL format (example using regular expressions)
+    # import re
+    # if not video_url or not re.match(r'^https://www\.youtube\.com/watch\?v=', video_url):
+    #     return None
+    # Use YouTube embed API to get basic information (no download)
+    base_url = f'https://www.googleapis.com/oembed?url={video_url}&format=json'
+    response = requests.get(base_url)
+
+    if response.ok:
+        data = response.json()
+        return data
+    else:
+        resp = response.json()
+        print(resp)
+        return None
+
+def get_short_code(link):
+    match = re.search(r'/reels/([^/]+)/', link)
+    if match:
+        code = match.group(1)
+        return code
+    else:
+        return None
+
+
+@app.route('/getvideofromlink', methods=['POST'])
+def youtube_proxy():
+    if request.method == 'POST':
+        try:
+            data = request.json 
+            video_url = data.get('video_url')
+            linkFrom = data.get('linkFrom')
+            if not video_url:
+                return jsonify({'error': 'Video URL is required'}), 400
+            if linkFrom=='youtube':
+                try:
+                    yt = YouTube(video_url)
+                    stream = yt.streams.get_highest_resolution()
+                    buffer = io.BytesIO()
+                    stream.stream_to_buffer(buffer)
+                    buffer.seek(0)
+                    response = Response(buffer, mimetype='video/mp4')
+                    response.headers['Content-Disposition'] = 'attachment; filename="video.mp4"'
+                    return response
+                except Exception as e:
+                    print("Error:", e)
+                    return jsonify({'error': str(e)}), 500
+            elif linkFrom=='insta':
+                try:
+                    loader = instaloader.Instaloader()
+
+                    try:
+                        short_code = get_short_code(video_url)
+                        print(short_code)
+                        post = instaloader.Post.from_shortcode(loader.context, 'C2wizqKP1NE')
+                    except instaloader.exceptions.QueryReturnedNotFoundException:
+                        return jsonify({"error": "Instagram post not found."}), 404
+                    except instaloader.exceptions.PrivateProfileNotFollowedException:
+                        return jsonify({"error": "The Instagram profile is private and cannot be accessed."}), 403
+                
+                    if post.typename == 'GraphVideo':
+                        video_url = post.video_url
+                        response = requests.get(video_url, stream=True)
+                        return Response(response.iter_content(chunk_size=1024), mimetype='video/mp4')
+                    else:
+                        return jsonify({"error": "No video found in the provided Instagram post URL."}), 404
+                except instaloader.PrivateProfileNotFollowedException:
+                    return jsonify({"error": "The Instagram profile is private and cannot be accessed."}), 403
+                except Exception as e:
+                    return jsonify({"error": str(e)}), 500
+            elif linkFrom=='drive':
+                try:
+                    output_path = "LinkVideos/video.mp4"  # Set the output path
+                    gdown.download(video_url, output_path, quiet=False)
+                    with open(output_path, 'rb') as f:
+                        video_content = f.read()
+                    return video_content
+                except Exception as e:
+                    raise Exception("Failed to retrieve video content: " + str(e))
+
+        except Exception as e:
+            print(e)
+            return jsonify({'error': str(e)}), 500
+
 
 
 
