@@ -130,7 +130,8 @@ def get_youtube_video_info(video_url):
         return None
 
 def get_short_code(link):
-    match = re.search(r'/reels/([^/]+)/', link)
+    pattern = r"/reels/([\w-]+)/"
+    match = re.search(pattern, link)
     if match:
         code = match.group(1)
         return code
@@ -167,7 +168,8 @@ def youtube_proxy():
                     try:
                         short_code = get_short_code(video_url)
                         print(short_code)
-                        post = instaloader.Post.from_shortcode(loader.context, 'C2wizqKP1NE')
+                        print("MEPW")
+                        post = instaloader.Post.from_shortcode(loader.context, short_code)
                     except instaloader.exceptions.QueryReturnedNotFoundException:
                         return jsonify({"error": "Instagram post not found."}), 404
                     except instaloader.exceptions.PrivateProfileNotFollowedException:
@@ -182,6 +184,7 @@ def youtube_proxy():
                 except instaloader.PrivateProfileNotFollowedException:
                     return jsonify({"error": "The Instagram profile is private and cannot be accessed."}), 403
                 except Exception as e:
+                    print(e)
                     return jsonify({"error": str(e)}), 500
             elif linkFrom=='drive':
                 try:
